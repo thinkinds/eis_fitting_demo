@@ -48,7 +48,7 @@ initial_guess = []
 for c_type in comp_type_list:
     initial_guess.extend(guess_dict[c_type])
 # initial_guess = [.01, 1e-7, .1, .1, .1, .01, 1, 1, 1, .01, 1]
-initial_guess
+# initial_guess
 
 if uploaded_file is not None:
     frequencies, Z = preprocessing.readCSV(uploaded_file)
