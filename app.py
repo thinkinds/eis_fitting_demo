@@ -1,8 +1,23 @@
+import re
+
 import numpy as np
 import streamlit as st
 from impedance import preprocessing
 from impedance.models.circuits import CustomCircuit
 import plotly.graph_objects as go
+from schemdraw import Drawing
+
+from circuits_draw import draw_circuit
+
+guess_dict = {
+    'R': [.01],
+    'L': [1e-7],
+    'C': [.1],
+    'CPE':[1e-4, .8],
+    'W':  [.1],
+    'Wo': [0.05, 1],
+    'Ws': [0.05, 1],
+}
 
 st.title('EIS等效电路模型拟合')
 st.markdown('''
@@ -18,9 +33,22 @@ frequencies = None
 Z = None
 
 # Model : R0-(L3//R3)-(CPE1//R1)-(CPE2//R2)-W1
-circuit = 'R_0-p(L_3,R_3)-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1'
-initial_guess = [.01, 1e-7, .1, .1, .1, .01, 1, 1, 1, .01, 1]
-st.image('circuit_diagram.png', caption='等效电路模型')
+# circuit = 'R_0-p(L_3,R_3)-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1'
+circuit = st.text_input('请输入电路描述字符串，"-"表示串联，P(x, y)表示两条并联支路', 'R_0-p(L_3,R_3)-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1')
+# st.image('circuit_diagram.png', caption='等效电路模型')
+with Drawing(file='temp_circuit_diagram.svg', show=False) as dwg:
+    draw_circuit(circuit, dwg)
+    image_bytes = dwg.get_imagedata('svg')
+st.image('temp_circuit_diagram.svg', use_column_width=True, caption='等效电路模型示意图')
+
+# make init guess for fitting
+# Find all matches
+comp_type_list = re.findall(r'\b(R|C|W|Wo|Ws|L|CPE)_?\d*\b', circuit)
+initial_guess = []
+for c_type in comp_type_list:
+    initial_guess.extend(guess_dict[c_type])
+# initial_guess = [.01, 1e-7, .1, .1, .1, .01, 1, 1, 1, .01, 1]
+initial_guess
 
 if uploaded_file is not None:
     frequencies, Z = preprocessing.readCSV(uploaded_file)
