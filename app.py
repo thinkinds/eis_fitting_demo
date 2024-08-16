@@ -2,6 +2,7 @@ import re
 
 import numpy as np
 import streamlit as st
+from hybdrt.models import DRT
 from impedance import preprocessing
 from impedance.models.circuits import CustomCircuit
 import plotly.graph_objects as go
@@ -94,7 +95,7 @@ if frequencies is not None:
                       yaxis=dict(scaleanchor="x", scaleratio=1))
 
     st.divider()
-    col1, col2 = st.columns(2)
+    col1, col2= st.columns(2)
 
     with col1:
         st.header("奈奎斯特图")
@@ -113,3 +114,40 @@ if frequencies is not None:
         rmse = np.sqrt(np.mean(np.square(errors_abs)))
         st.text(f'RMSE: {rmse}[Ohm]')
 
+
+    st.divider()
+    st.header("DRT分析结果")
+
+    # drt analysis
+    drt = DRT()
+    drt.dual_fit_eis(frequencies, Z, discrete_kw=dict(prior=True, prior_strength=None))
+
+    # Get the best discrete candidate identified by the dual algorithm
+    best_id = drt.get_best_candidate_id('discrete', criterion='lml-bic')
+    best_model_dict = drt.get_candidate(best_id, 'discrete')
+
+    tau = drt.get_tau_eval(ppd=20)
+    gamma = drt.predict_distribution(tau)
+    tau_list = tau.tolist()
+    gamma_list = gamma.tolist()
+
+    # 创建点线图
+    fig = go.Figure()
+
+    # 添加点线
+    fig.add_trace(go.Scatter(x=tau_list, y=gamma_list, mode='lines', name='弛豫时间分布'))
+
+    # 设置图表布局
+    fig.update_layout(title='DRT Plot',
+                      xaxis_title=r'τ (s)',
+                      yaxis_title=r'γ (Ω)',
+                      xaxis=dict(
+                          type="log"  # 设置x轴为对数刻度
+                      )
+                      )
+    st.plotly_chart(fig, use_container_width=False)
+
+    st.markdown(f'''经过智能DRT分析，  
+    最佳ECM模型应包括{len(best_model_dict['time_constants'].tolist())}个RC回路，  
+    对应弛豫时间常数为{best_model_dict['time_constants'].tolist()}
+    ''')

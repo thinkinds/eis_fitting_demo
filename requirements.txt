@@ -1,3 +1,12 @@
 impedance
 plotly
 schemdraw
+matplotlib
+numpy
+cvxopt
+pandas
+scipy
+scikit-learn
+scikit-image
+git+https://github.com/jdhuang-csm/mittag-leffler.git
+git+https://github.com/jdhuang-csm/hybrid-drt.git
