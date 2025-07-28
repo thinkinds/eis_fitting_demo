@@ -40,7 +40,7 @@ circuit = st.text_input('请输入电路描述字符串，"-"表示串联，P(x,
 with Drawing(file='temp_circuit_diagram.svg', show=False) as dwg:
     draw_circuit(circuit, dwg)
     image_bytes = dwg.get_imagedata('svg')
-st.image('temp_circuit_diagram.svg', use_column_width=True, caption='等效电路模型示意图')
+st.image('temp_circuit_diagram.svg', use_container_width=True, caption='等效电路模型示意图')
 
 # make init guess for fitting
 # Find all matches
