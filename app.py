@@ -35,7 +35,7 @@ Z = None
 
 # Model : R0-(L3//R3)-(CPE1//R1)-(CPE2//R2)-W1
 # circuit = 'R_0-p(L_3,R_3)-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1'
-circuit = st.text_input('请输入电路描述字符串，"-"表示串联，P(x, y)表示两条并联支路', 'R_0-p(L_3,R_3)-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1')
+circuit = st.text_input('请输入电路描述字符串，"-"表示串联，P(x, y)表示两条并联支路', 'R_0-p(CPE_1,R_1)-p(CPE_2,R_2)-Wo_1')
 # st.image('circuit_diagram.png', caption='等效电路模型')
 with Drawing(file='temp_circuit_diagram.svg', show=False) as dwg:
     draw_circuit(circuit, dwg)
@@ -53,6 +53,9 @@ for c_type in comp_type_list:
 
 if uploaded_file is not None:
     frequencies, Z = preprocessing.readCSV(uploaded_file)
+    ignore_below_x = st.checkbox('忽略虚部负值', value=True)
+    if ignore_below_x:
+        frequencies, Z = preprocessing.ignoreBelowX(frequencies, Z)
 # else:
 #     # Load data from the example EIS data
 #     frequencies, Z = preprocessing.readCSV('./exampleData.csv')
@@ -64,90 +67,120 @@ if uploaded_file is not None:
 if frequencies is not None:
     circuit = CustomCircuit(circuit, initial_guess=initial_guess)
 
-    circuit.fit(frequencies, Z)
+    try:
+        circuit.fit(frequencies, Z)
+        Z_fit = circuit.predict(frequencies)
+        fit_success = True
+    except RuntimeError as e:
+        st.error(f"拟合失败: {str(e)}")
+        st.warning("""拟合失败可能的原因和解决方案：
+        1. 初始猜测值不合适 - 尝试调整电路模型或参数
+        2. 数据质量问题 - 检查EIS数据是否正确
+        3. 电路模型过于复杂 - 尝试简化电路模型
+        4. 数据点数量不足 - 确保有足够的频率点
+        """)
+        fit_success = False
 
-    Z_fit = circuit.predict(frequencies)
+    if fit_success:
+        # plot result using plotly
+        # 拆分实部和虚部
+        real_Z = Z.real
+        imag_Z = -Z.imag
 
-    # plot result using plotly
-    # 拆分实部和虚部
-    real_Z = Z.real
-    imag_Z = -Z.imag
+        real_Z_fit = Z_fit.real
+        imag_Z_fit = -Z_fit.imag
 
-    real_Z_fit = Z_fit.real
-    imag_Z_fit = -Z_fit.imag
+        # 创建点线图
+        fig = go.Figure()
 
-    # 创建点线图
-    fig = go.Figure()
+        # 添加第一个复数数组的点线
+        fig.add_trace(go.Scatter(x=real_Z, y=imag_Z, mode='markers', name='测量值'))
 
-    # 添加第一个复数数组的点线
-    fig.add_trace(go.Scatter(x=real_Z, y=imag_Z, mode='markers', name='测量值'))
+        # 添加第二个复数数组的点线
+        fig.add_trace(go.Scatter(x=real_Z_fit, y=imag_Z_fit, mode='markers', name='拟合值'))
 
-    # 添加第二个复数数组的点线
-    fig.add_trace(go.Scatter(x=real_Z_fit, y=imag_Z_fit, mode='markers', name='拟合值'))
+        # 设置图表布局
+        fig.update_layout(title='Nyquist(Cole-Cole) Plot',
+                          xaxis_title='Impedance Real Part [Ω]',
+                          yaxis_title='-Impedance Imaginary Part [Ω]')
 
-    # 设置图表布局
-    fig.update_layout(title='Nyquist(Cole-Cole) Plot',
-                      xaxis_title='Impedance Real Part [Ω]',
-                      yaxis_title='-Impedance Imaginary Part [Ω]')
+        # 调整布局使 x 和 y 轴比例一致
+        fig.update_layout(xaxis=dict(scaleanchor="y", scaleratio=1),
+                          yaxis=dict(scaleanchor="x", scaleratio=1))
 
-    # 调整布局使 x 和 y 轴比例一致
-    fig.update_layout(xaxis=dict(scaleanchor="y", scaleratio=1),
-                      yaxis=dict(scaleanchor="x", scaleratio=1))
+        st.divider()
+        col1, col2= st.columns(2)
 
-    st.divider()
-    col1, col2= st.columns(2)
+        with col1:
+            st.header("奈奎斯特图")
+            st.plotly_chart(fig, use_container_width=True)
 
-    with col1:
+        with col2:
+            st.header("拟合参数")
+            st.text(f'等效电路模型（-串联，p并联）： {circuit.circuit}')
+
+            param_names, param_units = circuit.get_param_names()
+            zipped = zip(param_names, param_units, circuit.parameters_)
+            for param in zipped:
+                st.text(f'{param[0]}: {param[2]}[{param[1]}]')
+
+            errors_abs = np.abs(Z_fit - Z)
+            rmse = np.sqrt(np.mean(np.square(errors_abs)))
+            st.text(f'RMSE: {rmse}[Ohm]')
+    else:
+        # 如果拟合失败，仍然显示原始数据的奈奎斯特图
+        real_Z = Z.real
+        imag_Z = -Z.imag
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=real_Z, y=imag_Z, mode='markers', name='测量值'))
+        
+        fig.update_layout(title='Nyquist(Cole-Cole) Plot (原始数据)',
+                          xaxis_title='Impedance Real Part [Ω]',
+                          yaxis_title='-Impedance Imaginary Part [Ω]')
+        
+        fig.update_layout(xaxis=dict(scaleanchor="y", scaleratio=1),
+                          yaxis=dict(scaleanchor="x", scaleratio=1))
+        
+        st.divider()
         st.header("奈奎斯特图")
         st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.header("拟合参数")
-        st.text(f'等效电路模型（-串联，p并联）： {circuit.circuit}')
-
-        param_names, param_units = circuit.get_param_names()
-        zipped = zip(param_names, param_units, circuit.parameters_)
-        for param in zipped:
-            st.text(f'{param[0]}: {param[2]}[{param[1]}]')
-
-        errors_abs = np.abs(Z_fit - Z)
-        rmse = np.sqrt(np.mean(np.square(errors_abs)))
-        st.text(f'RMSE: {rmse}[Ohm]')
+        st.info("由于拟合失败，仅显示原始测量数据。")
 
 
-    st.divider()
-    st.header("DRT分析结果")
+    # st.divider()
+    # st.header("DRT分析结果")
 
-    # drt analysis
-    drt = DRT()
-    drt.dual_fit_eis(frequencies, Z, discrete_kw=dict(prior=True, prior_strength=None))
+    # # drt analysis
+    # drt = DRT()
+    # drt.dual_fit_eis(frequencies, Z, discrete_kw=dict(prior=True, prior_strength=None))
 
-    # Get the best discrete candidate identified by the dual algorithm
-    best_id = drt.get_best_candidate_id('discrete', criterion='lml-bic')
-    best_model_dict = drt.get_candidate(best_id, 'discrete')
+    # # Get the best discrete candidate identified by the dual algorithm
+    # best_id = drt.get_best_candidate_id('discrete', criterion='lml-bic')
+    # best_model_dict = drt.get_candidate(best_id, 'discrete')
 
-    tau = drt.get_tau_eval(ppd=20)
-    gamma = drt.predict_distribution(tau)
-    tau_list = tau.tolist()
-    gamma_list = gamma.tolist()
+    # tau = drt.get_tau_eval(ppd=20)
+    # gamma = drt.predict_distribution(tau)
+    # tau_list = tau.tolist()
+    # gamma_list = gamma.tolist()
 
-    # 创建点线图
-    fig = go.Figure()
+    # # 创建点线图
+    # fig = go.Figure()
 
-    # 添加点线
-    fig.add_trace(go.Scatter(x=tau_list, y=gamma_list, mode='lines', name='弛豫时间分布'))
+    # # 添加点线
+    # fig.add_trace(go.Scatter(x=tau_list, y=gamma_list, mode='lines', name='弛豫时间分布'))
 
-    # 设置图表布局
-    fig.update_layout(title='DRT Plot',
-                      xaxis_title=r'τ (s)',
-                      yaxis_title=r'γ (Ω)',
-                      xaxis=dict(
-                          type="log"  # 设置x轴为对数刻度
-                      )
-                      )
-    st.plotly_chart(fig, use_container_width=False)
+    # # 设置图表布局
+    # fig.update_layout(title='DRT Plot',
+    #                   xaxis_title=r'τ (s)',
+    #                   yaxis_title=r'γ (Ω)',
+    #                   xaxis=dict(
+    #                       type="log"  # 设置x轴为对数刻度
+    #                   )
+    #                   )
+    # st.plotly_chart(fig, use_container_width=False)
 
-    st.markdown(f'''经过智能DRT分析，  
-    最佳ECM模型应包括{len(best_model_dict['time_constants'].tolist())}个RC回路，  
-    对应弛豫时间常数为{best_model_dict['time_constants'].tolist()}
-    ''')
+    # st.markdown(f'''经过智能DRT分析，  
+    # 最佳ECM模型应包括{len(best_model_dict['time_constants'].tolist())}个RC回路，  
+    # 对应弛豫时间常数为{best_model_dict['time_constants'].tolist()}
+    # ''')
